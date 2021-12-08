@@ -87,6 +87,10 @@ private:
                     samples_++;
                     std::cout << "Message: " << hello_.message() << " with index: " << hello_.index()
                                 << " RECEIVED." << std::endl;
+                    std::cout << "recieved data: " << std::hex;
+                    for (uint32_t i : hello_.data())
+                      std::cout << i << " ";
+                    std::cout << std::endl;
                 }
             }
         }

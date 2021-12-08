@@ -2,4 +2,5 @@ struct HelloWorld
 {
     unsigned long index;
     string message;
+    sequence<unsigned long> data;
 };

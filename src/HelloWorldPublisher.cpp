@@ -44,6 +44,8 @@ private:
 
     TypeSupport type_;
 
+    size_t data_size = 1024;
+
     class PubListener : public DataWriterListener
     {
     public:
@@ -113,8 +115,20 @@ public:
     //!Initialize the publisher
     bool init()
     {
+        size_t size = data_size;
         hello_.index(0);
         hello_.message("HelloWorld");
+        std::vector<uint32_t> data;
+        data.reserve(size / 4);
+        for (size_t i = 0; i < size; i += 4)
+        {
+            data.push_back(0xdeadbeef);
+        }
+        hello_.data(data);
+        std::cout << "send " << std::hex;
+        for (uint32_t i : hello_.data())
+            std::cout << i << " ";
+        std::cout << std::endl;
 
         DomainParticipantQos participantQos;
         participantQos.name("Participant_publisher");
@@ -145,12 +159,24 @@ public:
         }
 
         // Create the DataWriter
-        writer_ = publisher_->create_datawriter(topic_, DATAWRITER_QOS_DEFAULT, &listener_);
+        std::cout << "Creating reliability for datawriter: ..." << std::endl;
+        eprosima::fastdds::dds::ReliabilityQosPolicy reliability_qos;
+        reliability_qos.kind = eprosima::fastdds::dds::BEST_EFFORT_RELIABILITY_QOS;
+        eprosima::fastdds::dds::DataWriterQos writer_qos;
+        eprosima::fastdds::dds::HistoryQosPolicy history_qos;
+        history_qos.kind = eprosima::fastdds::dds::KEEP_LAST_HISTORY_QOS;
+        writer_qos.reliability(reliability_qos);
+        writer_qos.history(history_qos);
+
+        std::cout << "Creating datawriter: ..." << std::endl;
+        writer_ = publisher_->create_datawriter(topic_, writer_qos, &listener_);
 
         if (writer_ == nullptr)
         {
+            std::cout << "Datawriter not created" << std::endl;
             return false;
         }
+        std::cout << "Datawriter created." << std::endl;
         return true;
     }
 
@@ -160,7 +186,36 @@ public:
         if (listener_.matched_ > 0)
         {
             hello_.index(hello_.index() + 1);
-            writer_->write(&hello_);
+            eprosima::fastrtps::rtps::InstanceHandle_t instance_handle;
+            eprosima::fastdds::dds::TypeSupport::ReturnCode_t ret_write =
+                writer_->write(&hello_, instance_handle);
+            if (
+                    ret_write ==
+                    eprosima::fastdds::dds::TypeSupport::ReturnCode_t::RETCODE_OK)
+            {
+                std::cout << "write succeded: ok" << std::endl;
+            }
+            else if (
+                    ret_write ==
+                    eprosima::fastdds::dds::TypeSupport::ReturnCode_t::
+                    RETCODE_PRECONDITION_NOT_MET)
+            {
+                std::cout << "write failed: precondition not met" << std::endl;
+            }
+            else
+            {
+                std::cout << "write failed: other " << ret_write() << std::endl;
+            }
+            /*  Alternatively this block could be used to show that the issue also exists using other write implemetations
+                if (writer_->write(&hello_, instance_handle))
+                {
+                    std::cout << "publication succeeded" << std::endl;
+                }
+                else
+                {
+                    std::cout << "publication failed" << std::endl;
+                }
+            */
             return true;
         }
         return false;
@@ -182,6 +237,10 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
     }
+    void set_size(uint32_t size)
+    {
+        data_size = size;
+    }
 };
 
 int main(
@@ -192,6 +251,10 @@ int main(
     int samples = 10;
 
     HelloWorldPublisher* mypub = new HelloWorldPublisher();
+    if(argc == 2)
+    {
+        mypub->set_size(atoi(argv[1]));
+    }
     if(mypub->init())
     {
         mypub->run(static_cast<uint32_t>(samples));
